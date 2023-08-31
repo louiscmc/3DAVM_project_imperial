@@ -3,6 +3,7 @@ import funcs as fu
 import globals as const
 import plotly.graph_objs as go
 
+# used to plot a single frame (obsolete)
 
 test_center = 8
 test_vertex = 8
@@ -16,55 +17,50 @@ for vertex in gvertices.nodes():
 print('average of normals : ', norm_avg/len(gvertices.nodes()))
 
 
-fu.simulate(gvertices, gcenters, gaxes, const.steps)
-print(gcenters.nodes.data())
-
-# test for area and perimeter of test_center
-area, perim = fu.center_area_perim(test_center, gcenters, gvertices)
-print('perim: ', perim ,' area: ', area)
+all_data = fu.simulate(gvertices, gcenters, gaxes, const.steps)
+gaxes_loc, gcenters_loc, gvertices_loc = all_data[-1]
 
 
-# test for vertex normal
-fu.normals(gvertices)
+
 
 
 
 # Plot with Plotly
 # Create Edges
 edge_x, edge_y, edge_z = [], [], []
-for idx0, idx1 in gvertices.edges():
-    x0, y0, z0 = gvertices.nodes[idx0]["coords"]
-    x1, y1, z1 = gvertices.nodes[idx1]["coords"]
+for idx0, idx1 in gvertices_loc.edges():
+    x0, y0, z0 = gvertices_loc.nodes[idx0]["coords"]
+    x1, y1, z1 = gvertices_loc.nodes[idx1]["coords"]
     edge_x.extend([x0, x1, None])
     edge_y.extend([y0, y1, None])
     edge_z.extend([z0, z1, None])
 
-vertx, verty, vertz = fu.coords(gvertices)
+vertx, verty, vertz = fu.coords(gvertices_loc)
 centx, centy, centz = fu.coords(gcenters)
-axesx, axesy, axesz = fu.coords(gaxes)
+axesx, axesy, axesz = fu.coords(gaxes_loc)
 
-norm_force_x, norm_force_y, norm_force_z = [], [], []
-bend_force_x, bend_force_y, bend_force_z = [], [], []
-for k in range(len(gvertices.nodes)):
+""" norm_force_x, norm_force_y, norm_force_z = [], [], []
+bend_force_x, bend_force_y, bend_force_z = [], [], [] """
+for k in range(len(gvertices_loc.nodes)):
     x0, y0, z0 = vertx[k], verty[k], vertz[k]
-    x1, y1, z1 = gvertices.nodes[k]['force'][0]+x0, gvertices.nodes[k]['force'][1]+y0, gvertices.nodes[k]['force'][2]+z0
+    """ x1, y1, z1 = gvertices.nodes[k]['force'][0]+x0, gvertices.nodes[k]['force'][1]+y0, gvertices.nodes[k]['force'][2]+z0
     x2, y2, z2 = -gvertices.nodes[k]['normal'][0]*const.c_alpha*const.nu+x0, -gvertices.nodes[k]['normal'][1]*const.c_alpha*const.nu+y0, -gvertices.nodes[k]['normal'][2]*const.c_alpha*const.nu+z0
     norm_force_x.extend([x0, x1, None])
     norm_force_y.extend([y0, y1, None])
     norm_force_z.extend([z0, z1, None])
     bend_force_x.extend([x0, x2, None])
     bend_force_y.extend([y0, y2, None])
-    bend_force_z.extend([z0, z2, None])
+    bend_force_z.extend([z0, z2, None]) """
 
 
 edge_trace = go.Scatter3d(name="Cell edges",
     x=edge_x, y=edge_y, z=edge_z, line=dict(width=10, color='#888'), mode='lines')
 
-force_trace = go.Scatter3d(name="Total forces",
+""" force_trace = go.Scatter3d(name="Total forces",
     x=norm_force_x, y=norm_force_y, z=norm_force_z, line=dict(width=10, color='#555'), mode='lines') 
 
 bend_trace = go.Scatter3d(name="Bending force",
-    x=bend_force_x, y=bend_force_y, z=bend_force_z, line=dict(width=5, color='pink'), mode='lines') 
+    x=bend_force_x, y=bend_force_y, z=bend_force_z, line=dict(width=5, color='pink'), mode='lines')  """
 
 vert_trace=go.Scatter3d(name="Cell Vertices",
     x=vertx, 
@@ -104,7 +100,7 @@ axis_trace = go.Scatter3d(name="Axis of tube",
 
 
 # fig = go.Figure(data=[edge_trace, norm_trace, vert_trace, center_trace])
-fig = go.Figure(data=[edge_trace, force_trace, bend_trace, vert_trace, center_trace, axis_trace])
+fig = go.Figure(data=[edge_trace, vert_trace, center_trace, axis_trace])
 
 # Show the figure
 fig.show()

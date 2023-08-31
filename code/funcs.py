@@ -6,6 +6,7 @@ import plotly.express as px
 from random import random, randint
 from math import atan2, sqrt, cos, sin
 from operator import itemgetter
+from copy import deepcopy
 
 
 np.random.seed(123) # to repeat experiences
@@ -41,9 +42,9 @@ def def_graphs():
     gvertices = nx.Graph()
     gcenters = nx.Graph()
     gaxes = nx.Graph()
-    for axis_point in range(const.n_points_vert//3-1):
+    for axis_point in range(const.n_cells_vert):
         gaxes.add_node(axis_point, **{"coords" : [], 'centers': []})
-        for cell in range(const.n_points_hor//2):
+        for cell in range(const.n_cells_hor):
             point = [const.width*(2*cell+1+(axis_point%2))/const.n_points_hor, const.length*3*axis_point/const.n_points_vert]
             loc_vertices = []
             hex_points = hexagon(point)
@@ -62,7 +63,10 @@ def def_graphs():
                 gvertices.add_edge(loc_vertices[vert], loc_vertices[(vert+1)%6])  
             gcenters.nodes[center]['vertices']=loc_vertices
     
-    cylinder_radius = const.width/(2*np.pi)  
+
+    
+    cylinder_radius = const.width/(2*np.pi)
+
     for vertex in gvertices.nodes:
         att=gvertices.nodes[vertex]
         theta = 2 * np.pi * att['coords'][0] / const.width
@@ -70,21 +74,15 @@ def def_graphs():
         x = cylinder_radius * np.cos(theta)
         y = cylinder_radius * np.sin(theta)
         att['coords']=[x+const.random_noise*random()+z*const.tilting/const.length,y+const.random_noise*random(),z+const.random_noise*random()]
-
         #boundary vertices
-        if (z < const.length*2.5/const.n_points_vert) or (const.length-z < const.length*3.5/const.n_points_vert):
+        if (z < const.length/2/const.n_cells_vert) or (const.length-z < const.length/2/const.n_cells_vert*2):
             att['fixed']=True
         else:
             att['fixed']=False
+
     for center in gcenters.nodes:
-        att=gcenters.nodes[center]
-        gcenters.nodes[center]['coords']=coords_center(att['vertices'], gvertices)
-        if (att['coords'][0]-att['coords'][2]*const.tilting/const.length<0 and att['coords'][2]>const.length/2):
-            gcenters.nodes[center]['scale']=scale_size(att['coords'][2])*const.scale_artif
-        elif (att['coords'][0]-att['coords'][2]*const.tilting/const.length>0 and att['coords'][2]<const.length/2):
-            gcenters.nodes[center]['scale']=scale_size(att['coords'][2])*const.scale_artif
-        else:
-            gcenters.nodes[center]['scale']=scale_size(att['coords'][2])
+        scale_size(gcenters, gvertices, center)
+
     add_area_perim(gcenters, gvertices)
     for axis_point in gaxes.nodes:
         att = gaxes.nodes[axis_point]
@@ -157,14 +155,16 @@ def divisions(G):
     return tot_div//2
 
 def ref_area(step, scale):
-    return const.base_area*(1+const.growth_rate*step)*(1-(1-scale)/2)
+    return const.base_area*(1+const.growth_rate*step)*scale
 
 def ref_perim(step, scale):
-    return const.base_perimeter*np.sqrt(1+const.growth_rate*step)*(1-(1-scale)/2)**2
+    return const.base_perimeter*np.sqrt(1+const.growth_rate*step)*scale**2
 
 def ref_volume(step):
-    return const.base_volume*(1+const.beating_intensity*np.sin(step*2*3.141592/const.heart_rhythm))
-# division
+    if const.beating_intensity!=0:
+        return const.base_volume*(1+step/const.steps+const.beating_intensity*np.sin(step*2*3.141592/const.heart_rhythm))
+    return const.base_volume
+
 
 def division(gvertices, gcenters, gaxes, center):
     vertices = gcenters.nodes[center]["vertices"]
@@ -222,10 +222,20 @@ def division(gvertices, gcenters, gaxes, center):
 
 # forces
 
-def scale_size(z):
-    #if 0.25<z/const.length<0.75:
-    #    return 0.75+abs(z/const.length-0.5)
-    return 1
+def scale_size(gcenters, gvertices, center):
+    # using the same cell shapes as in michaela's paper
+    att=gcenters.nodes[center]
+    gcenters.nodes[center]['coords']=coords_center(att['vertices'], gvertices)
+    x=att['coords'][0]
+    z=att['coords'][2]
+    if (x-z*const.tilting/const.length<0.1 and att['coords'][2]>const.length*0.61) or (x-z*const.tilting/const.length>-0.1 and z<const.length*0.39):
+        gcenters.nodes[center]['scale']=1-0.8*const.scale_artif
+    elif (x-z*const.tilting/const.length>0.1 and const.length*0.75>z>const.length*0.61) or (x-z*const.tilting/const.length<-0.1 and const.length*0.39>z>const.length*0.25):
+        gcenters.nodes[center]['scale']=1+1.5*const.scale_artif
+    elif (const.length*0.55>z>const.length*0.45):
+        gcenters.nodes[center]['scale']=1-1*const.scale_artif
+    else:
+        gcenters.nodes[center]['scale']=1
 
 def force_dir(point1, point2):
     # unity vector from point 1 to point 2
@@ -244,9 +254,9 @@ def area_forces(gvertices, gcenters, vertex, center, area, good_edges, coords, s
     loc_force_dir = force_dir(gcenters.nodes[center]['coords'], coords)
     gvertices.nodes[vertex]['force']-= const.a_alpha*(area-ref_area(step,scale))*loc_force_dir*local_area_width/1.5**gcenters.nodes[center]["divisions"]
 
-def volume_forces(gvertices, gcenters, gaxes, center, vertex, coords, volume, divs, step):
-    loc_force_dir = force_dir(gaxes.nodes[gcenters.nodes[center]["axis"]]['coords']+np.array([0.05,0,0]), coords) # +np.array([0.15,0,0])
-    gvertices.nodes[vertex]['force']-= const.vol_alpha*loc_force_dir/3*(volume-ref_volume(step)*(const.n_cells_tot+divs)/const.n_cells_tot)
+def volume_forces(gvertices, gcenters, gaxes, center, vertex, coords, volume, divs, step, scale):
+    loc_force_dir = force_dir(gaxes.nodes[gcenters.nodes[center]["axis"]]['coords'], coords) 
+    gvertices.nodes[vertex]['force']-= scale*const.vol_alpha*loc_force_dir/3*(volume-scale*ref_volume(step)*(const.n_cells_tot+divs)/const.n_cells_tot)
 
 def innervolume(gcenters, gaxes, step):
     volume=0
@@ -293,7 +303,7 @@ def compute_force(gvertices, gcenters, gaxes, step):
             # volume force
             if const.vol_alpha !=0 :
                 divs=divisions(gcenters)
-                volume_forces(gvertices, gcenters, gaxes, center, vertex, coords, volume, divs, step)
+                volume_forces(gvertices, gcenters, gaxes, center, vertex, coords, volume, divs, step, scale)
             # good edges : edges to the vertex, on the cell
             good_edges=[]
             for edge in edges:
@@ -302,11 +312,6 @@ def compute_force(gvertices, gcenters, gaxes, step):
             # Perimeter force
             if len(good_edges)==2:
                 gvertices.nodes[vertex]['force']-=2*const.b_alpha*(L_alpha-ref_perim(step, scale))*(force_dir(gvertices.nodes[good_edges[0]]['coords'], coords)+force_dir(gvertices.nodes[good_edges[1]]['coords'], coords))
-                """ if gvertices.nodes[vertex]['coords'][0]<0:
-                    gvertices.nodes[vertex]['force']+=2*const.b_alpha*L_alpha*(force_dir(gvertices.nodes[good_edges[0]]['coords'], coords)+force_dir(gvertices.nodes[good_edges[1]]['coords'], coords))
-                else:
-                    gvertices.nodes[vertex]['force']+=0.2*2*const.b_alpha*L_alpha*(force_dir(gvertices.nodes[good_edges[0]]['coords'], coords)+force_dir(gvertices.nodes[good_edges[1]]['coords'], coords))
- """
             else:
                 raise(ValueError('Wrong number of neighbours'))
             # Area force
@@ -346,50 +351,42 @@ def compute_A_hat(gvertices, gcenters, center):
 
 def t1_transition(gcenters, gvertices, vertex1, vertex2, dist):
     if gvertices.nodes[vertex1]['coords'][2]>gvertices.nodes[vertex2]['coords'][2]:
-    # making sure vertex1 is at the bottom to fit the schema
+    # making sure vertex1 is at the bottom 
         _ = vertex1
         vertex1=vertex2
         vertex2=_
 
     centers1=gvertices.nodes[vertex1]['centers']
     centers2=gvertices.nodes[vertex2]['centers']
+    print(centers1, centers2)
     #shared centers : alpha is linked only to v1, beta to v2, gamma and delta are shared.
     tmp = []
-    for center in centers1:
-        if center in centers2:
-            tmp.append(center)
+    for center_ in centers1:
+        if center_ in centers2:
+            tmp.append(center_)
         else:
-            c_alpha = center
+            c_alpha = center_
     x1, y1 = gcenters.nodes[tmp[0]]['coords'][:2]
     x2, y2 = gcenters.nodes[tmp[1]]['coords'][:2]
     if (atan2(y1, x1)<atan2(y2, x2)) != (y1>0 and y2<0 and x1<0):
     # if the first center is more to the "left" (anglewise)
-    # chirality !!!
         c_delta, c_gamma = tmp[0], tmp[1]
     else :
         c_delta, c_gamma = tmp[1], tmp[0]
     
-    if len(gcenters.nodes[c_delta]['vertices'])==3 or len(gcenters.nodes[c_gamma]['vertices'])==3:
-        print('3 vertices !')
-        return True
-    
-    for center in centers2:
-        if center not in tmp:
-            c_beta = center
+    for center_ in centers2:
+        if center_ not in tmp:
+            c_beta = center_
     
     # identifying vertices:
 
     for vertex in gcenters.nodes[c_alpha]['vertices']:
-        if vertex in gcenters.nodes[c_delta]['vertices'] and vertex!=vertex1 and vertex!=vertex2:
-            vertex1delta = vertex
-        elif vertex in gcenters.nodes[c_gamma]['vertices'] and vertex!=vertex1 and vertex!=vertex2:
+        if vertex in gcenters.nodes[c_gamma]['vertices'] and vertex!=vertex1 and vertex!=vertex2:
             vertex1gamma = vertex
 
     for vertex in gcenters.nodes[c_beta]['vertices']:
         if vertex in gcenters.nodes[c_delta]['vertices'] and vertex!=vertex1 and vertex!=vertex2:
             vertex2delta = vertex
-        elif vertex in gcenters.nodes[c_gamma]['vertices'] and vertex!=vertex1 and vertex!=vertex2:
-            vertex2gamma = vertex
 
     # operate transition
     for i in range(len(gcenters.nodes[c_delta]['vertices'])):
@@ -443,13 +440,22 @@ def update_positions(gvertices, gcenters, gaxes, step, steps):
         norm_avg+=np.linalg.norm(gvertices.nodes[vertex]['force'])
     print('average of forces : ', norm_avg/len(gvertices.nodes()))
     for edge in gvertices.edges:
-        loc_dist = dist(gvertices.nodes[edge[0]]['coords'], gvertices.nodes[edge[1]]['coords'])
-        if loc_dist< const.t1_min_dist: # T1 transition only if vertices are too close
-            t1_transition(gcenters, gvertices, edge[0], edge[1], loc_dist)
+        if gvertices.has_edge(edge[0], edge[1]): #edge might have been removed by a previous T1 transition
+            loc_dist = dist(gvertices.nodes[edge[0]]['coords'], gvertices.nodes[edge[1]]['coords'])
+            ok=1
+            if not(loc_dist< const.t1_min_dist and gvertices.nodes[edge[0]]['fixed']==False and gvertices.nodes[edge[1]]['fixed']==False): # T1 transition only if vertices are too close
+                ok=0
+            else:
+                for center_ in gvertices.nodes[edge[0]]['centers']:
+                    if len(gcenters.nodes[center_])<=4 or gcenters.nodes[center_]['axis'] in [0,const.n_cells_vert-1]:
+                        ok=0
+            if ok==1:
+                t1_transition(gcenters, gvertices, edge[0], edge[1], loc_dist)
+        else:
+            print("edge has disappeared by previous T1 transition !")
     for vertex in gvertices.nodes():
         if gvertices.nodes[vertex]['fixed']==False:
-            scale=gcenters.nodes[gvertices.nodes[vertex]["centers"][0]]['scale']
-            gvertices.nodes[vertex]['coords'] += scale**2*const.nu * gvertices.nodes[vertex]['force']
+            gvertices.nodes[vertex]['coords'] += const.nu * gvertices.nodes[vertex]['force']
             #rotation(gvertices, vertex, 10*const.angle*(1-scale))
         else:
             # rotation(gvertices, vertex, const.angle)
@@ -457,7 +463,7 @@ def update_positions(gvertices, gcenters, gaxes, step, steps):
     if const.tau_div !=0:   
         tmp_centers = gcenters.copy()
         for center in tmp_centers.nodes: 
-            if random()<1/const.tau_div/steps:
+            if random()<1/const.tau_div/steps and len(gcenters.nodes[center]['vertices'])<=4:
                 division(gvertices, gcenters, gaxes, center)
     for center in gcenters.nodes:
         att=gcenters.nodes[center]
@@ -469,7 +475,10 @@ def update_positions(gvertices, gcenters, gaxes, step, steps):
     add_area_perim(gcenters, gvertices)
 
 def simulate(gvertices, gcenters, gaxes, steps):
+    all_data=[[gaxes.copy(), gcenters.copy(), deepcopy(gvertices)]]
     for step in range(steps):
         print ("step ",step,' of ', steps)
         print('total divisions : ', divisions(gcenters))
         update_positions(gvertices, gcenters, gaxes, step, steps)
+        all_data.append([gaxes.copy(), gcenters.copy(), deepcopy(gvertices)])
+    return all_data

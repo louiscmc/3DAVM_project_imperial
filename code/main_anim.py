@@ -10,15 +10,27 @@ test_center = 8
 test_vertex = 8
 
 # Generate cylinder
-gvertices, gcenters, gaxes = fu.def_graphs()
+gvertices, gcenters, gaxes = fu.def_graphs(0.25)
 fu.normals(gvertices)
 
 
-all_data = fu.simulate(gvertices, gcenters, gaxes, const.steps)
-steps = range(const.steps)
+all_data = fu.simulate(gvertices, gcenters, gaxes, const.steps, 2)[0]
+""" all_paths=[]
+for scale in range(6):
+    print('scale ', scale,' sur 5')
+    loc_length_list=[]
+    for vol in range(6):
+        print('vol ', vol,' sur 5')
+        gvertices, gcenters, gaxes = fu.def_graphs(scale/20)
+        fu.normals(gvertices)
+        loc_length_list.append(fu.simulate(gvertices, gcenters, gaxes, const.steps, vol*0.4)[1])
+    print('scale : ', scale/20,', list of lengths : ', loc_length_list)
+    all_paths.append(loc_length_list)
+print('path length : ', all_paths) """
+# this was used to plot figure 9
 
 # Create figure
-
+steps = range(const.steps)
 # make data
 
 step=0
@@ -38,10 +50,17 @@ vertx, verty, vertz = fu.coords(gvertices0)
 centx, centy, centz = fu.coords(gcenters0)
 axesx, axesy, axesz = fu.coords(gaxes0)
 
+""" axiscenter = []
+for center_ in gcenters0.nodes:
+    axiscenter.append(gcenters0.nodes[center_]["axis"])
+ """
+scale_list = []
+for center_ in gcenters0.nodes:
+    scale_list.append(gcenters0.nodes[center_]["scale"])
 
 
 edge_trace = go.Scatter3d(name="Cell edges",
-    x=edge_x.copy(), y=edge_y.copy(), z=edge_z.copy(), line=dict(width=10, color='#888'), mode='lines')
+    x=edge_x.copy(), y=edge_y.copy(), z=edge_z.copy(), line=dict(width=10, color='rgba(0,0,0,0.5)'), mode='lines')
 
 vert_trace=go.Scatter3d(name="Cell Vertices",
     x=vertx, 
@@ -62,7 +81,11 @@ center_trace = go.Scatter3d(name="Cell centers",
     mode='markers',
     marker=dict(
         size=12,
-        color='red',                # set color to an array/list of desired values
+        color=scale_list, #or axiscenter
+        colorbar=dict(
+            title="Cell scale factor"
+        ),
+        colorscale="Viridis",               # set color to an array/list of desired values
         opacity=0.8
     ))
 
@@ -77,7 +100,7 @@ axis_trace = go.Scatter3d(name="Axis of tube",
         opacity=0.8
     ))
 
-locdata = [edge_trace, vert_trace, center_trace, axis_trace]
+locdata = [edge_trace, center_trace, axis_trace]
 fig = go.Figure(data=locdata.copy())
     
 # Frames
@@ -98,10 +121,12 @@ for stepid in steps:
     centx, centy, centz = fu.coords(gcentersloc)
     axesx, axesy, axesz = fu.coords(gaxesloc)
 
-
+    scale_list= []
+    for center_ in gcenters0.nodes:
+        scale_list.append(gcenters0.nodes[center_]["scale"])
 
     edge_trace = go.Scatter3d(name="Cell edges",
-        x=edge_x.copy(), y=edge_y.copy(), z=edge_z.copy(), line=dict(width=10, color='#888'), mode='lines')
+        x=edge_x.copy(), y=edge_y.copy(), z=edge_z.copy(), line=dict(width=10, color='rgba(0,0,0,0.5)'), mode='lines')
 
     vert_trace=go.Scatter3d(name="Cell Vertices",
         x=vertx.copy(), 
@@ -122,7 +147,11 @@ for stepid in steps:
         mode='markers',
         marker=dict(
             size=12,
-            color='red',                # set color to an array/list of desired values
+            color=scale_list, #or axiscenter
+            colorbar=dict(
+            title="Cell scale factor"
+            ),
+            colorscale="Viridis",             
             opacity=0.8
         ))
 
@@ -139,7 +168,7 @@ for stepid in steps:
     
     if stepid%50==0:
         print("rendering step ", stepid, " / ", const.steps)
-    locdata = [edge_trace, vert_trace, center_trace, axis_trace].copy()
+    locdata = [edge_trace, center_trace, axis_trace].copy()
     frames.append(go.Frame(data=locdata.copy(), name=f'step {stepid}'))
 
 fig.update(frames=frames)
@@ -193,7 +222,13 @@ fig.update_layout(
          sliders=sliders
     )
 
-
+fig.update_layout(coloraxis_colorbar=dict(yanchor="top", y=1, x=0, ticks="outside"))
+fig.update_layout(legend=dict(
+    yanchor="top",
+    y=0.99,
+    xanchor="left",
+    x=0.01
+))
 fig.update_layout(sliders=sliders)
 fig.show()
 

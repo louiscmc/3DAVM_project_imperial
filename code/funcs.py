@@ -33,9 +33,9 @@ def hexagon(coords):
 
 def coords_center(loc_vertices, graph): # in 3D !
     l=len(loc_vertices)
-    return [sum([graph.nodes[loc_vertices[i]]['coords'][0] for i in range(l)])/l, sum([graph.nodes[loc_vertices[i]]['coords'][1] for i in range(l)])/l, sum([graph.nodes[loc_vertices[i]]['coords'][2] for i in range(l)])/l]
+    return np.array([sum([graph.nodes[loc_vertices[i]]['coords'][0] for i in range(l)])/l, sum([graph.nodes[loc_vertices[i]]['coords'][1] for i in range(l)])/l, sum([graph.nodes[loc_vertices[i]]['coords'][2] for i in range(l)])/l])
 
-def def_graphs():
+def def_graphs(scale_artif):
     """
     Generate the graph of vertices, with connecting edges.
     """
@@ -68,6 +68,7 @@ def def_graphs():
     cylinder_radius = const.width/(2*np.pi)
 
     for vertex in gvertices.nodes:
+        gvertices.nodes[vertex]['t1']=0
         att=gvertices.nodes[vertex]
         theta = 2 * np.pi * att['coords'][0] / const.width
         z = att['coords'][1]
@@ -81,12 +82,13 @@ def def_graphs():
             att['fixed']=False
 
     for center in gcenters.nodes:
-        scale_size(gcenters, gvertices, center)
+        scale_size(gcenters, gvertices, center, scale_artif)
 
-    add_area_perim(gcenters, gvertices)
     for axis_point in gaxes.nodes:
         att = gaxes.nodes[axis_point]
         gaxes.nodes[axis_point]['coords']=coords_center(att['centers'], gcenters)
+
+    add_area_perim(gaxes, gcenters, gvertices)
 
     return gvertices, gcenters, gaxes
 
@@ -103,29 +105,37 @@ def triangle_area(p1, p2, p3):
     s = (a+b+c)/2
     return np.sqrt(s*(s-a)*(s-b)*(s-c))
 
-def center_area_perim(center, gcenters, gvertices):
+def center_area_perim_normal(center, gaxes, gcenters, gvertices):
 
     # the area and perimeter of a given point / region
     vert_idx = gcenters.nodes[center]['vertices']
-    center = gcenters.nodes[center]['coords']
+    center_coords = gcenters.nodes[center]['coords']
     vertices = []
     num_vertices = len(vert_idx)
     for i in vert_idx:
         vertices.append(gvertices.nodes[i]['coords'])
     perim = 0
     total_area = 0
+    normal=np.array([0.,0.,0.])
     for i in range(len(vertices)):
         #area 
-        total_area += triangle_area(center, vertices[i], vertices[(i+1)%num_vertices])
+        total_area += triangle_area(center_coords, vertices[i], vertices[(i+1)%num_vertices])
         #perim
         perim += dist(vertices[i],vertices[(i+1)%num_vertices])
-    return total_area, perim
+        #normal
+        normal += np.cross(np.array(center_coords)-np.array(vertices[i]), np.array(center_coords)-np.array(vertices[(i+1)%num_vertices]))
+    if np.linalg.norm(normal)!= 0:
+        normal/np.linalg.norm(normal)
+    if np.dot(normal, np.array(center_coords)-gaxes.nodes[gcenters.nodes[center]["axis"]]['coords'])<0:
+        normal= -normal
+    return total_area, perim, normal
 
-def add_area_perim(gcenters, gvertices):
+def add_area_perim(gaxes,gcenters, gvertices):
     for center in gcenters.nodes():
-        c_area, c_perim = center_area_perim(center, gcenters, gvertices)
+        c_area, c_perim, c_normal = center_area_perim_normal(center, gaxes, gcenters, gvertices)
         gcenters.nodes[center]['area']=c_area
         gcenters.nodes[center]['perimeter']=c_perim
+        gcenters.nodes[center]['normal']=c_normal
 
 def vertex_normal(G, vertex):
     # Get the neighbors of the vertex in the graph
@@ -158,16 +168,17 @@ def ref_area(step, scale):
     return const.base_area*(1+const.growth_rate*step)*scale
 
 def ref_perim(step, scale):
-    return const.base_perimeter*np.sqrt(1+const.growth_rate*step)*scale**2
+    return const.base_perimeter*np.sqrt(1+const.growth_rate*step)*np.sqrt(scale)
 
 def ref_volume(step):
-    if const.beating_intensity!=0:
-        return const.base_volume*(1+step/const.steps+const.beating_intensity*np.sin(step*2*3.141592/const.heart_rhythm))
-    return const.base_volume
+    if const.beating_volume_change !=0:
+        return const.base_volume*(1+2*step/const.steps+const.beating_volume_change*np.sin(step*2*3.141592/const.heart_rhythm))
+    return const.base_volume*(1+2*step/const.steps)
+
 
 
 def division(gvertices, gcenters, gaxes, center):
-    vertices = gcenters.nodes[center]["vertices"]
+    vertices = np.array(gcenters.nodes[center]["vertices"]).tolist()
     num_vert = len(vertices)
     if num_vert>3:
         coords_z=[[vertex, gvertices.nodes[vertex]["coords"][2]] for vertex in vertices]
@@ -207,9 +218,9 @@ def division(gvertices, gcenters, gaxes, center):
         for vertex in vertices[num_vert//2:]:
             for idx_center in range(len(gvertices.nodes[vertex]["centers"])):
                 if gvertices.nodes[vertex]["centers"][idx_center]==center:
-                    gvertices.nodes[vertex]["centers"].pop(idx_center)
+                    gvertices.nodes[vertex]["centers"]=np.delete(gvertices.nodes[vertex]["centers"], idx_center)
                     break
-            gvertices.nodes[vertex]["centers"].append(newcenter)
+            gvertices.nodes[vertex]["centers"]=np.insert(gvertices.nodes[vertex]["centers"],0,newcenter)
         # proper division : 2/ setting up edges of vertices
         gvertices.remove_edge(vertices[0], vertices[-1])
         gvertices.remove_edge(vertices[num_vert//2], vertices[(num_vert//2)-1])
@@ -222,23 +233,23 @@ def division(gvertices, gcenters, gaxes, center):
 
 # forces
 
-def scale_size(gcenters, gvertices, center):
+def scale_size(gcenters, gvertices, center, scale_artif):
     # using the same cell shapes as in michaela's paper
     att=gcenters.nodes[center]
     gcenters.nodes[center]['coords']=coords_center(att['vertices'], gvertices)
     x=att['coords'][0]
     z=att['coords'][2]
-    if (x-z*const.tilting/const.length<0.1 and att['coords'][2]>const.length*0.61) or (x-z*const.tilting/const.length>-0.1 and z<const.length*0.39):
-        gcenters.nodes[center]['scale']=1-0.8*const.scale_artif
-    elif (x-z*const.tilting/const.length>0.1 and const.length*0.75>z>const.length*0.61) or (x-z*const.tilting/const.length<-0.1 and const.length*0.39>z>const.length*0.25):
-        gcenters.nodes[center]['scale']=1+1.5*const.scale_artif
-    elif (const.length*0.55>z>const.length*0.45):
-        gcenters.nodes[center]['scale']=1-1*const.scale_artif
+    if (x-z*const.tilting/const.length<0.1 and att['coords'][2]>const.length*0.61) or (x-z*const.tilting/const.length>-0.1 and z<const.length*0.45):
+        gcenters.nodes[center]['scale']=(1-1.8*scale_artif)
+    elif (x-z*const.tilting/const.length>0.1 and const.length*0.9>z>const.length*0.61) or (x-z*const.tilting/const.length<-0.1 and const.length*0.45>z>const.length*0.1):
+        gcenters.nodes[center]['scale']=1+1.2*scale_artif
+    elif (const.length*0.61>z>const.length*0.45):
+        gcenters.nodes[center]['scale']=1-2*scale_artif
     else:
         gcenters.nodes[center]['scale']=1
 
 def force_dir(point1, point2):
-    # unity vector from point 1 to point 2
+    # unit vector from point 1 to point 2
     force_dir_loc = np.array(point2)-np.array(point1)
     force_dir_loc/= np.linalg.norm(force_dir_loc)
     return force_dir_loc
@@ -252,32 +263,39 @@ def vertex_forces(gvertices, vertex):
 def area_forces(gvertices, gcenters, vertex, center, area, good_edges, coords, step, scale):
     local_area_width = np.linalg.norm(np.array(gvertices.nodes[good_edges[1]]['coords'])-np.array(gvertices.nodes[good_edges[0]]['coords']))
     loc_force_dir = force_dir(gcenters.nodes[center]['coords'], coords)
-    gvertices.nodes[vertex]['force']-= const.a_alpha*(area-ref_area(step,scale))*loc_force_dir*local_area_width/1.5**gcenters.nodes[center]["divisions"]
+    gvertices.nodes[vertex]['force']-= const.a_alpha*(area-ref_area(step,scale))*loc_force_dir*local_area_width
 
-def volume_forces(gvertices, gcenters, gaxes, center, vertex, coords, volume, divs, step, scale):
-    loc_force_dir = force_dir(gaxes.nodes[gcenters.nodes[center]["axis"]]['coords'], coords) 
-    gvertices.nodes[vertex]['force']-= scale*const.vol_alpha*loc_force_dir/3*(volume-scale*ref_volume(step)*(const.n_cells_tot+divs)/const.n_cells_tot)
-
+def volume_forces(gvertices, vertex, volume, divs, step, scale, c_normal, vol_alpha):
+    gvertices.nodes[vertex]['force']-= scale*vol_alpha*c_normal/3*(volume-scale*ref_volume(step)*(const.n_cells_tot+divs)/const.n_cells_tot)
+    
 def innervolume(gcenters, gaxes, step):
     volume=0
-    for axis_point in gaxes.nodes:
-     # the area and perimeter of a given point / region
-        cent_idx = gaxes.nodes[axis_point]['centers']
-        coords_axis = gaxes.nodes[axis_point]['coords']
-        centers = []
-        num_centers = len(cent_idx)
-        for i in cent_idx:
-            centers.append(gcenters.nodes[i]['coords'])
-        # perim = 0
-        loc_area = 0
-        for i in range(len(centers)):
-            #area 
-            loc_area += triangle_area(coords_axis, centers[i], centers[(i+1)%num_centers])
-            #perim
-            # perim += dist(centers[i],centers[(i+1)%centers])
-        volume += loc_area*const.length/const.n_cells_vert
-    print('volume : ',volume, ' ref_volume : ', ref_volume(step))
-    return volume
+    if step==0:
+        for axis_point in gaxes.nodes:
+        # the area and perimeter of a given point / region
+            cent_idx = gaxes.nodes[axis_point]['centers']
+            coords_axis = gaxes.nodes[axis_point]['coords']
+            centers = []
+            num_centers = len(cent_idx)
+            for i in cent_idx:
+                centers.append(gcenters.nodes[i]['coords'])
+            # perim = 0
+            loc_area = 0
+            for i in range(len(centers)):
+                #area 
+                loc_area += triangle_area(coords_axis, centers[i], centers[(i+1)%num_centers])
+                #perim
+                # perim += dist(centers[i],centers[(i+1)%centers])
+            volume += loc_area*const.length/const.n_cells_vert
+        print('volume : ',volume, ' ref_volume : ', ref_volume(step))
+        return volume
+    else:
+        volume=0
+        for axispoint in gaxes.nodes:
+            if axispoint!=const.n_cells_vert-1:
+                volume+= gaxes.nodes[axispoint]['area']*dist(gaxes.nodes[axispoint]['coords'], gaxes.nodes[axispoint+1]['coords'])
+        print('volume : ',volume, ' ref_volume : ', ref_volume(step))
+        return volume
 
 def bending_forces(gvertices, gcenters, gaxes, vertex, center):
     norm_bend_loc = np.linalg.norm(gvertices.nodes[vertex]['normal']*const.c_alpha)
@@ -285,7 +303,7 @@ def bending_forces(gvertices, gcenters, gaxes, vertex, center):
     loc_base_norm_dir /= np.linalg.norm(loc_base_norm_dir)
     return -((gvertices.nodes[vertex]['normal']+ loc_base_norm_dir * 0.0856)*const.c_alpha)*norm_bend_loc*const.nu/0.05
 
-def compute_force(gvertices, gcenters, gaxes, step):
+def compute_force(gvertices, gcenters, gaxes, step, vol_alpha):
     volume = innervolume(gcenters, gaxes, step)
     for vertex in gvertices.nodes():
         #initialisation and bending, vertex forces
@@ -301,9 +319,10 @@ def compute_force(gvertices, gcenters, gaxes, step):
             edges = gvertices.edges(vertex)
             coords = gvertices.nodes[vertex]['coords']
             # volume force
-            if const.vol_alpha !=0 :
+            if vol_alpha !=0 :
                 divs=divisions(gcenters)
-                volume_forces(gvertices, gcenters, gaxes, center, vertex, coords, volume, divs, step, scale)
+                c_normal = gcenters.nodes[center]['normal']
+                volume_forces(gvertices, vertex, volume, divs, step, scale, c_normal, vol_alpha)
             # good edges : edges to the vertex, on the cell
             good_edges=[]
             for edge in edges:
@@ -313,41 +332,18 @@ def compute_force(gvertices, gcenters, gaxes, step):
             if len(good_edges)==2:
                 gvertices.nodes[vertex]['force']-=2*const.b_alpha*(L_alpha-ref_perim(step, scale))*(force_dir(gvertices.nodes[good_edges[0]]['coords'], coords)+force_dir(gvertices.nodes[good_edges[1]]['coords'], coords))
             else:
-                raise(ValueError('Wrong number of neighbours'))
+                print(gvertices.nodes[vertex])
+                raise(ValueError('Wrong number of neighbours for vertex ', vertex))
             # Area force
             area_forces(gvertices, gcenters, vertex, center, A_alpha, good_edges, coords, step, scale)
     bend_avg=0
     for vertex in gvertices.nodes():
         bend_avg+=np.linalg.norm(bending_forces(gvertices, gcenters, gaxes, vertex, gvertices.nodes[vertex]['centers'][0]))
-    print('average of bending forces : ', bend_avg/len(gvertices.nodes()))
+    if np.isnan(gvertices.nodes[0]['force'][0]):
+        print('NaN force !')
+        raise ValueError('NaN found !')
+    # print('average of bending forces : ', bend_avg/len(gvertices.nodes()))
 
-def compute_length_ij(gvertices, vertex1, vertex2):
-    coords1 = np.array(gvertices.nodes[vertex1]['coords'])
-    coords2 = np.array(gvertices.nodes[vertex2]['coords'])
-    length = np.linalg.norm(coords1 - coords2)
-    if np.isnan(length):
-        print(f'NaN value found in length between vertices {vertex1} and {vertex2}')
-    return length
-
-def reorder_vertices(vertices, coords):
-    center = np.mean(coords, axis=0)
-    angles = np.arctan2(coords[:,1] - center[1], coords[:,0] - center[0])
-    return [vertices[i] for i in np.argsort(angles)]
-
-def compute_A_hat(gvertices, gcenters, center):
-    vertices = gcenters.nodes[center]['vertices']
-    coords = np.array([gvertices.nodes[vertex]['coords'] for vertex in vertices])
-    vertices = reorder_vertices(vertices, coords)
-    A_hat = np.zeros(3)
-    for i in range(len(vertices)):
-        cross_product = np.cross(gvertices.nodes[vertices[i]]['coords'], gvertices.nodes[vertices[(i+1)%len(vertices)]]['coords'])
-        if np.isnan(cross_product).any():
-            print(f'NaN value found in cross product for vertices {vertices[i]} and {vertices[(i+1)%len(vertices)]}')
-        A_hat += cross_product
-    A_hat /= 2
-    if np.isnan(A_hat).any():
-        print(f'NaN value found in A_hat for center {center}')
-    return A_hat
 
 def t1_transition(gcenters, gvertices, vertex1, vertex2, dist):
     if gvertices.nodes[vertex1]['coords'][2]>gvertices.nodes[vertex2]['coords'][2]:
@@ -358,7 +354,6 @@ def t1_transition(gcenters, gvertices, vertex1, vertex2, dist):
 
     centers1=gvertices.nodes[vertex1]['centers']
     centers2=gvertices.nodes[vertex2]['centers']
-    print(centers1, centers2)
     #shared centers : alpha is linked only to v1, beta to v2, gamma and delta are shared.
     tmp = []
     for center_ in centers1:
@@ -422,7 +417,14 @@ def t1_transition(gcenters, gvertices, vertex1, vertex2, dist):
     gvertices.nodes[vertex1]['coords']=gvertices.nodes[vertex2]['coords']+const.t1_coeff*direction
     gvertices.nodes[vertex1]['force']=np.zeros(3)
     gvertices.nodes[vertex2]['force']=np.zeros(3)
-    print('T1 transition between vertices ', vertex1, ' and ', vertex2)
+
+    # rerorder vertices in cells for area and perimeter calculations
+    reorder_cell_vertices(gcenters, gvertices, c_alpha)
+    reorder_cell_vertices(gcenters, gvertices, c_beta)
+    reorder_cell_vertices(gcenters, gvertices, c_gamma)
+    reorder_cell_vertices(gcenters, gvertices, c_delta)
+
+    # print('T1 transition between vertices ', vertex1, ' and ', vertex2)
     return True
 
 def rotation(gvertices, vertex, angle):
@@ -433,12 +435,86 @@ def rotation(gvertices, vertex, angle):
     gvertices.nodes[vertex]['coords'][0]=r*cos(phi+angle)
     gvertices.nodes[vertex]['coords'][1]=r*sin(phi+angle)
 
-def update_positions(gvertices, gcenters, gaxes, step, steps):
-    compute_force(gvertices, gcenters, gaxes, step)
+def axis_normal(gaxes, axispoint):
+    if axispoint!=0 and axispoint!=const.n_cells_vert-1:
+        vect = gaxes.nodes[axispoint+1]['coords']-gaxes.nodes[axispoint-1]['coords']
+        return vect
+    else : return np.array([0,0,1])
+
+def rotation_matrix_from_vectors(vect):
+    """ Find the rotation matrix that aligns vec1 to vec2
+    :param vect: the 3d "source" vector
+    :return rotation_matrix: A transform matrix (3x3) which when applied to vec1, aligns it with vec2.
+    """
+    z_norm = np.array([0,0,1])
+    vec_norm= (vect / np.linalg.norm(vect)).reshape(3)
+    v = np.cross(vec_norm,z_norm)
+    c = np.dot(vec_norm, z_norm)
+    s = np.linalg.norm(v)
+    kmat = np.array([[0, -v[2], v[1]], [v[2], 0, -v[0]], [-v[1], v[0], 0]])
+    rotation_matrix = np.eye(3) + kmat + kmat.dot(kmat) * ((1 - c) / (s ** 2))
+    return rotation_matrix
+
+def reorder_around_and_area(gaxes, gcenters, axispoint):
+    loc_origin = gaxes.nodes[axispoint]['coords']
+    loc_coords = []
+    loc_centers = gaxes.nodes[axispoint]['centers']
+    rot_mat = rotation_matrix_from_vectors(axis_normal(gaxes, axispoint))
+    for center_ in gaxes.nodes[axispoint]['centers']:
+        loc_coords.append(rot_mat.dot(gcenters.nodes[center_]['coords']-loc_origin))
+    angles = [np.arctan2(k[1], k[0]) for k in loc_coords]
+    gaxes.nodes[axispoint]['centers'] = [loc_centers[i] for i in np.argsort(angles)]
+    loc_centers = gaxes.nodes[axispoint]['centers']
+    area = 0
+    for i in range(len(loc_centers)):
+        v1 = gcenters.nodes[loc_centers[i]]['coords']
+        v2 = gcenters.nodes[loc_centers[(i+1) % len(loc_centers)]]['coords']
+        area += v1[0]*v2[1] - v1[1]*v2[0]
+    return abs(area/2)
+
+def reorder_cell_vertices(gcenters, gvertices, center):
+    vertex0= gcenters.nodes[center]['vertices'][0]
+    new_vertices = [vertex0]
+    edges0 = gvertices.edges(vertex0)
+    for edge in edges0:
+        if edge[0]==vertex0 and edge[1] in gcenters.nodes[center]['vertices']:
+            vertex1=edge[1]
+            new_vertices.append(vertex1)
+            break
+        elif edge[1]==vertex0 and edge[0] in gcenters.nodes[center]['vertices']:
+            vertex1=edge[0]
+            new_vertices.append(vertex1)
+            break
+    for k in range(1,len(gcenters.nodes[center]['vertices'])-1):
+        edges_ = gvertices.edges(new_vertices[k])
+        for edge in edges_:
+            if edge[0]==new_vertices[k] and edge[1] in gcenters.nodes[center]['vertices'] and edge[1]!=new_vertices[k-1]:
+                vertex_=edge[1]
+                new_vertices.append(vertex_)
+                break
+            elif edge[1]==new_vertices[k] and edge[0] in gcenters.nodes[center]['vertices'] and edge[0]!=new_vertices[k-1]:
+                vertex_=edge[1]
+                new_vertices.append(vertex_)
+                break
+    gcenters.nodes[center]['vertices']=new_vertices
+    
+
+def reassign_centers(gcenters, gaxes): # if a center is closer to a new axis point, it is reassigned
+    for center in gcenters.nodes:
+        for axispoint in gaxes.nodes:
+            if dist(gcenters.nodes[center]['coords'], gaxes.nodes[gcenters.nodes[center]['axis']]['coords']) > const.reassign_margin*dist(gcenters.nodes[center]['coords'], gaxes.nodes[axispoint]['coords']):
+                print("center ", center, " has switched to axis point ", axispoint)
+                gaxes.nodes[gcenters.nodes[center]['axis']]['centers']=np.delete(gaxes.nodes[gcenters.nodes[center]['axis']]['centers'], np.where(gaxes.nodes[gcenters.nodes[center]['axis']]['centers']==center))
+                gaxes.nodes[axispoint]['centers']= np.append(gaxes.nodes[axispoint]['centers'],center)
+                gcenters.nodes[center]['axis']=axispoint
+                
+
+def update_positions(gvertices, gcenters, gaxes, step, steps, vol_alpha):
+    compute_force(gvertices, gcenters, gaxes, step, vol_alpha)
     norm_avg = 0
     for vertex in gvertices.nodes():
         norm_avg+=np.linalg.norm(gvertices.nodes[vertex]['force'])
-    print('average of forces : ', norm_avg/len(gvertices.nodes()))
+    # print('average of forces : ', norm_avg/len(gvertices.nodes()))
     for edge in gvertices.edges:
         if gvertices.has_edge(edge[0], edge[1]): #edge might have been removed by a previous T1 transition
             loc_dist = dist(gvertices.nodes[edge[0]]['coords'], gvertices.nodes[edge[1]]['coords'])
@@ -451,8 +527,8 @@ def update_positions(gvertices, gcenters, gaxes, step, steps):
                         ok=0
             if ok==1:
                 t1_transition(gcenters, gvertices, edge[0], edge[1], loc_dist)
-        else:
-            print("edge has disappeared by previous T1 transition !")
+        # else:
+            # print("edge has disappeared by previous T1 transition !")
     for vertex in gvertices.nodes():
         if gvertices.nodes[vertex]['fixed']==False:
             gvertices.nodes[vertex]['coords'] += const.nu * gvertices.nodes[vertex]['force']
@@ -463,22 +539,36 @@ def update_positions(gvertices, gcenters, gaxes, step, steps):
     if const.tau_div !=0:   
         tmp_centers = gcenters.copy()
         for center in tmp_centers.nodes: 
-            if random()<1/const.tau_div/steps and len(gcenters.nodes[center]['vertices'])<=4:
+            if random()<1/const.tau_div/steps and len(gcenters.nodes[center]['vertices'])>=4:
+                # print('Division of center ', center)
                 division(gvertices, gcenters, gaxes, center)
     for center in gcenters.nodes:
         att=gcenters.nodes[center]
         gcenters.nodes[center]['coords']=coords_center(att['vertices'], gvertices)
+    if const.reassign_margin !=0:
+        reassign_centers(gcenters, gaxes)
     for axis_point in gaxes.nodes:
         att = gaxes.nodes[axis_point]
         gaxes.nodes[axis_point]['coords']=coords_center(att['centers'], gcenters)
+        gaxes.nodes[axis_point]['area']=reorder_around_and_area(gaxes, gcenters, axis_point)
+    
+    for center in gcenters.nodes:
+        reorder_cell_vertices(gcenters, gvertices, center)
     normals(gvertices)
-    add_area_perim(gcenters, gvertices)
+    add_area_perim(gaxes, gcenters, gvertices)
 
-def simulate(gvertices, gcenters, gaxes, steps):
+def axis_length(gaxes):
+    length=0
+    for idx in range(const.n_cells_vert-1):
+        length+=dist(gaxes.nodes[idx]['coords'], gaxes.nodes[idx+1]['coords'])
+    return length
+
+def simulate(gvertices, gcenters, gaxes, steps, vol_alpha):
     all_data=[[gaxes.copy(), gcenters.copy(), deepcopy(gvertices)]]
     for step in range(steps):
         print ("step ",step,' of ', steps)
         print('total divisions : ', divisions(gcenters))
-        update_positions(gvertices, gcenters, gaxes, step, steps)
-        all_data.append([gaxes.copy(), gcenters.copy(), deepcopy(gvertices)])
-    return all_data
+        update_positions(gvertices, gcenters, gaxes, step, steps, vol_alpha)
+        all_data.append([gaxes.copy(), deepcopy(gcenters), deepcopy(gvertices)])
+        path = axis_length(gaxes)
+    return all_data, path

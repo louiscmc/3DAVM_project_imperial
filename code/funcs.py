@@ -170,9 +170,9 @@ def ref_area(step, scale):
 def ref_perim(step, scale):
     return const.base_perimeter*np.sqrt(1+const.growth_rate*step)*np.sqrt(scale)
 
-def ref_volume(step):
+def ref_volume(step, rhythm):
     if const.beating_volume_change !=0:
-        return const.base_volume*(1+2*step/const.steps+const.beating_volume_change*np.sin(step*2*3.141592/const.heart_rhythm))
+        return const.base_volume*(1+2*step/const.steps+const.beating_volume_change*np.sin(step*2*3.141592/rhythm))
     return const.base_volume*(1+2*step/const.steps)
 
 
@@ -265,10 +265,10 @@ def area_forces(gvertices, gcenters, vertex, center, area, good_edges, coords, s
     loc_force_dir = force_dir(gcenters.nodes[center]['coords'], coords)
     gvertices.nodes[vertex]['force']-= const.a_alpha*(area-ref_area(step,scale))*loc_force_dir*local_area_width
 
-def volume_forces(gvertices, vertex, volume, divs, step, scale, c_normal, vol_alpha):
-    gvertices.nodes[vertex]['force']-= scale*vol_alpha*c_normal/3*(volume-scale*ref_volume(step)*(const.n_cells_tot+divs)/const.n_cells_tot)
+def volume_forces(gvertices, vertex, volume, divs, step, scale, c_normal, vol_alpha, rhythm):
+    gvertices.nodes[vertex]['force']-= scale*vol_alpha*c_normal/3*(volume-scale*ref_volume(step, rhythm)*(const.n_cells_tot+divs)/const.n_cells_tot)
     
-def innervolume(gcenters, gaxes, step):
+def innervolume(gcenters, gaxes, step, rhythm):
     volume=0
     if step==0:
         for axis_point in gaxes.nodes:
@@ -287,14 +287,14 @@ def innervolume(gcenters, gaxes, step):
                 #perim
                 # perim += dist(centers[i],centers[(i+1)%centers])
             volume += loc_area*const.length/const.n_cells_vert
-        print('volume : ',volume, ' ref_volume : ', ref_volume(step))
+        # print('volume : ',volume, ' ref_volume : ', ref_volume(step, rhythm))
         return volume
     else:
         volume=0
         for axispoint in gaxes.nodes:
             if axispoint!=const.n_cells_vert-1:
                 volume+= gaxes.nodes[axispoint]['area']*dist(gaxes.nodes[axispoint]['coords'], gaxes.nodes[axispoint+1]['coords'])
-        print('volume : ',volume, ' ref_volume : ', ref_volume(step))
+        # print('volume : ',volume, ' ref_volume : ', ref_volume(step, rhythm))
         return volume
 
 def bending_forces(gvertices, gcenters, gaxes, vertex, center):
@@ -303,8 +303,8 @@ def bending_forces(gvertices, gcenters, gaxes, vertex, center):
     loc_base_norm_dir /= np.linalg.norm(loc_base_norm_dir)
     return -((gvertices.nodes[vertex]['normal']+ loc_base_norm_dir * 0.0856)*const.c_alpha)*norm_bend_loc*const.nu/0.05
 
-def compute_force(gvertices, gcenters, gaxes, step, vol_alpha):
-    volume = innervolume(gcenters, gaxes, step)
+def compute_force(gvertices, gcenters, gaxes, step, vol_alpha, rhythm):
+    volume = innervolume(gcenters, gaxes, step, rhythm)
     for vertex in gvertices.nodes():
         #initialisation and bending, vertex forces
         coords = gvertices.nodes[vertex]['coords']
@@ -322,7 +322,7 @@ def compute_force(gvertices, gcenters, gaxes, step, vol_alpha):
             if vol_alpha !=0 :
                 divs=divisions(gcenters)
                 c_normal = gcenters.nodes[center]['normal']
-                volume_forces(gvertices, vertex, volume, divs, step, scale, c_normal, vol_alpha)
+                volume_forces(gvertices, vertex, volume, divs, step, scale, c_normal, vol_alpha, rhythm)
             # good edges : edges to the vertex, on the cell
             good_edges=[]
             for edge in edges:
@@ -509,8 +509,8 @@ def reassign_centers(gcenters, gaxes): # if a center is closer to a new axis poi
                 gcenters.nodes[center]['axis']=axispoint
                 
 
-def update_positions(gvertices, gcenters, gaxes, step, steps, vol_alpha):
-    compute_force(gvertices, gcenters, gaxes, step, vol_alpha)
+def update_positions(gvertices, gcenters, gaxes, step, steps, vol_alpha, rhythm):
+    compute_force(gvertices, gcenters, gaxes, step, vol_alpha, rhythm)
     norm_avg = 0
     for vertex in gvertices.nodes():
         norm_avg+=np.linalg.norm(gvertices.nodes[vertex]['force'])
@@ -563,12 +563,12 @@ def axis_length(gaxes):
         length+=dist(gaxes.nodes[idx]['coords'], gaxes.nodes[idx+1]['coords'])
     return length
 
-def simulate(gvertices, gcenters, gaxes, steps, vol_alpha):
+def simulate(gvertices, gcenters, gaxes, steps, vol_alpha, rhythm):
     all_data=[[gaxes.copy(), gcenters.copy(), deepcopy(gvertices)]]
     for step in range(steps):
         print ("step ",step,' of ', steps)
-        print('total divisions : ', divisions(gcenters))
-        update_positions(gvertices, gcenters, gaxes, step, steps, vol_alpha)
+        # print('total divisions : ', divisions(gcenters))
+        update_positions(gvertices, gcenters, gaxes, step, steps, vol_alpha, rhythm)
         all_data.append([gaxes.copy(), deepcopy(gcenters), deepcopy(gvertices)])
         path = axis_length(gaxes)
     return all_data, path

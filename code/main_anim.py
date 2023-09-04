@@ -6,28 +6,27 @@ import plotly.graph_objs as go
 
 #used to plot all of the development of the tube in a plotly animation
 
-test_center = 8
-test_vertex = 8
 
 # Generate cylinder
 gvertices, gcenters, gaxes = fu.def_graphs(0.25)
 fu.normals(gvertices)
 
 
-all_data = fu.simulate(gvertices, gcenters, gaxes, const.steps, 2)[0]
+all_data = fu.simulate(gvertices, gcenters, gaxes, const.steps, 4, 20)[0]
+
 """ all_paths=[]
-for scale in range(6):
-    print('scale ', scale,' sur 5')
+for rhythm in [2,5,10,20,50]:
+    print('rhythm ', rhythm,' sur 5')
     loc_length_list=[]
-    for vol in range(6):
+    for vol in [0.4, 0.8, 1.2, 1.6, 2.]:
         print('vol ', vol,' sur 5')
-        gvertices, gcenters, gaxes = fu.def_graphs(scale/20)
+        gvertices, gcenters, gaxes = fu.def_graphs(0.25)
         fu.normals(gvertices)
-        loc_length_list.append(fu.simulate(gvertices, gcenters, gaxes, const.steps, vol*0.4)[1])
-    print('scale : ', scale/20,', list of lengths : ', loc_length_list)
+        loc_length_list.append(fu.simulate(gvertices, gcenters, gaxes, const.steps, vol, rhythm)[1])
+    print('rhythm : ', rhythm,', list of lengths : ', loc_length_list)
     all_paths.append(loc_length_list)
 print('path length : ', all_paths) """
-# this was used to plot figure 9
+# this was used to plot figure 10
 
 # Create figure
 steps = range(const.steps)
@@ -50,10 +49,10 @@ vertx, verty, vertz = fu.coords(gvertices0)
 centx, centy, centz = fu.coords(gcenters0)
 axesx, axesy, axesz = fu.coords(gaxes0)
 
-""" axiscenter = []
+axiscenter = []
 for center_ in gcenters0.nodes:
     axiscenter.append(gcenters0.nodes[center_]["axis"])
- """
+
 scale_list = []
 for center_ in gcenters0.nodes:
     scale_list.append(gcenters0.nodes[center_]["scale"])
@@ -81,7 +80,7 @@ center_trace = go.Scatter3d(name="Cell centers",
     mode='markers',
     marker=dict(
         size=12,
-        color=scale_list, #or axiscenter
+        color=axiscenter, #or axiscenter or scale_list
         colorbar=dict(
             title="Cell scale factor"
         ),
@@ -121,6 +120,10 @@ for stepid in steps:
     centx, centy, centz = fu.coords(gcentersloc)
     axesx, axesy, axesz = fu.coords(gaxesloc)
 
+    axiscenter = []
+    for center_ in gcenters0.nodes:
+        axiscenter.append(gcenters0.nodes[center_]["axis"])
+
     scale_list= []
     for center_ in gcenters0.nodes:
         scale_list.append(gcenters0.nodes[center_]["scale"])
@@ -147,9 +150,9 @@ for stepid in steps:
         mode='markers',
         marker=dict(
             size=12,
-            color=scale_list, #or axiscenter
+            color=axiscenter, #or axiscenter or scale_list
             colorbar=dict(
-            title="Cell scale factor"
+            title="Axis points of cell"
             ),
             colorscale="Viridis",             
             opacity=0.8

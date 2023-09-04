@@ -2,7 +2,7 @@ import numpy as np
 
 # time
 
-steps = 600
+steps = 100
 
 n_cells_vert = 10 # number of vertical cells
 
@@ -58,7 +58,7 @@ shape_index = 3.72
 base_perimeter= shape_index*np.sqrt(base_area)
 base_volume = length * width**2 /4 /np.pi *0.6
 
-heart_rhythm= 10 #full loop each heart_rhythm steps
+# heart_rhythm= 10 #full loop each heart_rhythm steps /// NOT RELEVANT WITH NEWEST VERSION : heart rhythm PASSED AS FUNCTION VARIABLE
 beating_volume_change=0.8
 beating_force_multiplication=1
 

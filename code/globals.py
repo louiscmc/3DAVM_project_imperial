@@ -2,7 +2,7 @@ import numpy as np
 
 # time
 
-steps = 100
+steps = 600
 
 n_cells_vert = 10 # number of vertical cells
 
@@ -39,27 +39,27 @@ n_cells_hor = n_points_hor//2
 n_cells_tot = n_cells_vert*n_cells_hor
 
 # t1 transitions
-t1_min_dist= 0.005
+t1_min_dist= 0.000
 t1_coeff = 1.5
 
 
 # cell evolution : growth, division, death
 # growth
 base_area = length*width/n_cells_tot         # initial area
-growth_rate = 0.001    # each step, cell base area grows by +100*growth_rate%
+growth_rate = 0.005    # each step, cell base area grows by +100*growth_rate%
 
 # DIVISION
 
 tau_div = 0  # a 1/X of the cells will divide during the simulation on average
 
 # VOLUME
-shape_index = 3.72
+shape_index = 3.6
 
 base_perimeter= shape_index*np.sqrt(base_area)
 base_volume = length * width**2 /4 /np.pi *0.6
 
 # heart_rhythm= 10 #full loop each heart_rhythm steps /// NOT RELEVANT WITH NEWEST VERSION : heart rhythm PASSED AS FUNCTION VARIABLE
-beating_volume_change=0.8
+beating_volume_change=0
 beating_force_multiplication=1
 
 mu=3                   # translation of forces towards movement

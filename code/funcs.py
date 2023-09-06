@@ -1,11 +1,8 @@
 import numpy as np
 import globals as const
 import networkx as nx
-import pandas as pd
-import plotly.express as px
 from random import random, randint
 from math import atan2, sqrt, cos, sin
-from operator import itemgetter
 from copy import deepcopy
 
 
@@ -173,8 +170,8 @@ def ref_perim(step, scale):
 def ref_volume(step, rhythm):
     if const.beating_volume_change !=0:
         return const.base_volume*(1+2*step/const.steps+const.beating_volume_change*np.sin(step*2*3.141592/rhythm))
-    return const.base_volume*(1+2*step/const.steps)
-
+    # return const.base_volume*(1+2*step/const.steps)
+    return const.base_volume
 
 
 def division(gvertices, gcenters, gaxes, center):
@@ -266,7 +263,8 @@ def area_forces(gvertices, gcenters, vertex, center, area, good_edges, coords, s
     gvertices.nodes[vertex]['force']-= const.a_alpha*(area-ref_area(step,scale))*loc_force_dir*local_area_width
 
 def volume_forces(gvertices, vertex, volume, divs, step, scale, c_normal, vol_alpha, rhythm):
-    gvertices.nodes[vertex]['force']-= scale*vol_alpha*c_normal/3*(volume-scale*ref_volume(step, rhythm)*(const.n_cells_tot+divs)/const.n_cells_tot)
+    # gvertices.nodes[vertex]['force']-= scale*vol_alpha*c_normal/3*(volume-scale*ref_volume(step, rhythm)*(const.n_cells_tot+divs)/const.n_cells_tot)
+    gvertices.nodes[vertex]['force']-= vol_alpha*c_normal/3*(volume-ref_volume(step, rhythm)*(const.n_cells_tot+divs)/const.n_cells_tot)
     
 def innervolume(gcenters, gaxes, step, rhythm):
     volume=0

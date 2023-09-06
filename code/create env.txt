@@ -1,0 +1,2 @@
+conda create -n project_imperial numpy scipy plotly networkx
+

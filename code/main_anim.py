@@ -12,7 +12,7 @@ gvertices, gcenters, gaxes = fu.def_graphs(0.25)
 fu.normals(gvertices)
 
 
-all_data = fu.simulate(gvertices, gcenters, gaxes, const.steps, 4, 20)[0]
+all_data = fu.simulate(gvertices, gcenters, gaxes, const.steps, 2, 2)[0]
 
 """ all_paths=[]
 for rhythm in [2,5,10,20,50]:
@@ -80,7 +80,7 @@ center_trace = go.Scatter3d(name="Cell centers",
     mode='markers',
     marker=dict(
         size=12,
-        color=axiscenter, #or axiscenter or scale_list
+        color=scale_list, #or axiscenter or scale_list
         colorbar=dict(
             title="Cell scale factor"
         ),
@@ -150,7 +150,7 @@ for stepid in steps:
         mode='markers',
         marker=dict(
             size=12,
-            color=axiscenter, #or axiscenter or scale_list
+            color=scale_list, #or axiscenter or scale_list
             colorbar=dict(
             title="Axis points of cell"
             ),
